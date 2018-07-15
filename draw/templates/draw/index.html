@@ -24,13 +24,140 @@
     var canvas = document.getElementById('myCanvas');
     paper.setup(canvas);
     var tool = new paper.Tool();
+    
+    var state = {
+      "id": Date.now() + Math.random(),
+      "device": (window.location.href.indexOf("small") > -1) ? "user" : "display",
+      "paths": []
+    };
+    console.log("local device id: "+state.id+", type: " + state.device);
+  
+    var notSelf = function(other) { return other.id !== state.id };
+  
+    var users = {};
 
-    // getting the URL (you may want to use for Exercise 3)
-    var url = window.location.href;
+    var socket = new WebSocket('ws://p4-stecd-stephaniecd114968.codeanyapp.com:8765/');
+  
+    socket.onopen = function(e) {
+      socket.send(JSON.stringify({
+        "type": "connection",
+        "id": state.id,
+        "device": state.device
+      }));      
+    };
+  
+    socket.onmessage = function(recv) {
+      var data = JSON.parse(recv.data);
+      switch(data.type) {
+        case "connection":
+          console.log(data);
+          onRecvConnection(data);
+          break;
+        case "state":
+          console.log(data);
+          onRecvState(data);
+          break;
+        case "newline":
+          console.log(data);
+          onRecvNewLine(data);
+          break;
+        case "addpoint":
+          console.log(data);
+          onRecvPoint(data);
+          break;
+        default:
+          console.warning("unknown socket message data type " + data.type);          
+          console.log(data);
+          break;
+      }      
+    };
 
-    // var socket = new WebSocket(
-    //     'ws://your url here:8765/');
+    socket.onclose = function(e) {
+      console.error('Chat socket closed unexpectedly');
+    };
+  
+    function onRecvConnection(data) {
+      console.log(data.id + " just joined!")
+      socket.send(JSON.stringify({
+        "type": "state",
+        "id": state.id,
+        "device": state.device,
+        "state": serializeState()
+      }));
+    }
+  
+    function onRecvState(data) {     
+      console.log(data.id + " just sent their state!")
+      if (notSelf(data) && !(data.id in users)) {
+        console.log(data.id + " is an untracked user; adding information")
+        users[data.id] = {"paths": [], "color": ""};
+        for (var i = 0; i < data.state.paths.length; i++) {
+          var path = new paper.Path({
+            segments: data.state.paths[i],
+            strokeColor: 'black'
+          });
+          users[data.id].paths.push(path);
+        }
+      }
+    }
+  
+    function onRecvNewLine(data) {
+      if (notSelf(data)) {
+        console.log(data.id + " just created a new line!")
+        var path = new paper.Path({
+          segments: [data.point],
+          strokeColor: 'black'
+        });
+        users[data.id].paths.push(path);
+        if (users[data.id].paths.length - 1 !== data.lineid) {
+          console.error("oh no I don't know what happened");
+        }
+      }
+    }
+  
+    function onRecvPoint(data) {
+      if (notSelf(data)) {
+        users[data.id].paths[data.lineid].add(new paper.Point(data.point));
+      }
+    }
+  
+    function segmentToArray(i) {
+      return [i.point.x, i.point.y];
+    }
+  
+    function serializeState() {
+      return {
+        "paths": state.paths.map(i => { return i.segments.map(segmentToArray); })
+      };
+    }
+  
+    function drawCurrent() {
+      
+    }
 
+    tool.onMouseDown = function onMouseDown(event) {
+      state.paths.push(new paper.Path());
+      var lineid = state.paths.length - 1;
+      state.paths[lineid].strokeColor = 'black';
+      state.paths[lineid].add(event.point);
+      socket.send(JSON.stringify({
+        "type": "newline",
+        "id": state.id,
+        "lineid": lineid,
+        "point": [event.point.x, event.point.y]
+      }));
+    }
+
+    tool.onMouseDrag = function onMouseDrag(event) {
+      var lineid = state.paths.length - 1;
+      state.paths[lineid].add(event.point);
+      socket.send(JSON.stringify({
+        "type": "addpoint",
+        "id": state.id,
+        "lineid": lineid,
+        "point": [event.point.x, event.point.y]
+      }));
+    }
 
 </script>
 </html>
