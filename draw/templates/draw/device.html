@@ -1,0 +1,49 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>P4 Drawing</title>
+
+    <link rel="stylesheet" type="text/css" href="{% static 'draw/vendor/bootstrap/css/bootstrap.min.css' %}">
+    <script type="text/javascript" src="{% static 'draw/vendor/jquery/jquery-3.3.1.min.js' %}"></script>
+    <style type="text/css">
+    </style>
+</head>
+<body>
+  <div id="console">
+    this is a test
+  </div>
+</body>
+
+<script type="text/javascript">
+  var consolediv = document.getElementById("console");
+  function log(arg) {    
+    //consolediv.innerHTML = arg;
+    consolediv.insertAdjacentHTML("afterbegin", "<p>"+arg+"</p>");
+  }
+    if (window.DeviceOrientationEvent) {
+      window.addEventListener('deviceorientation', function(e) {
+        console.log("deviceorientation happened");
+        //log(e.gamma);
+        var roll = e.gamma; // interval [-90,90] degrees, positive is bank right     
+//         if (Math.abs(roll) > 40)
+//         {
+//           log(roll);
+//         }  
+      });
+    }
+
+    if (window.DeviceMotionEvent) {
+      window.addEventListener('devicemotion', function(e) {
+        //var totAcc = Math.sqrt((e.acceleration.x * e.acceleration.x) + (e.acceleration.y * e.acceleration.y) + (e.acceleration.z * e.acceleration.z));
+        //if (totAcc > 30)
+        if (e.rotationRate.gamma > 40)
+        {
+          log(e.rotationRate.gamma);
+        }
+      });
+    }
+</script>
+</html>

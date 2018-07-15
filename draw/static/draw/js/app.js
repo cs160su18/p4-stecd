@@ -1,6 +1,6 @@
 $(function() {
 
-     // setting up the canvas and one paper tool
+    // setting up the canvas and one paper tool
     var canvas = document.getElementById('myCanvas');
     paper.setup(canvas);
     var tool = new paper.Tool();
@@ -35,7 +35,6 @@ $(function() {
       var data = JSON.parse(recv.data);
       switch(data.type) {
         case "connection":
-          // add something to handle disconnects and remove lines
           console.log(data);
           onRecvConnection(data);
           break;
@@ -51,8 +50,16 @@ $(function() {
           //console.log(data);
           onRecvPoint(data);
           break;
+        case "removepath":
+          console.log(data);
+          onRecvRemovePath(data);
+          break;          
+        case "changecolor":
+          console.log(data);
+          onRecvChangeColor(data);
+          break;   
         default:
-          console.warning("unknown socket message data type " + data.type);          
+          console.error("unknown socket message data type " + data.type);          
           console.log(data);
           break;
       }      
@@ -97,7 +104,7 @@ $(function() {
   
     function onRecvNewLine(data) {
       if (notSelf(data) && state.device === "display") {
-        console.log(data.id + " just created a new line!")
+        console.log(data.id + " just created a new line!");
         var path = new paper.Path({
           segments: [data.point],
           strokeColor: users[data.id].color
@@ -115,6 +122,25 @@ $(function() {
       }
     }
   
+    function onRecvRemovePath(data) {
+      if (notSelf(data) && state.device === "display") {
+        console.log(data.id + " just removed a line!");
+        users[data.id].paths[data.lineid].remove();
+        users[data.id].paths.splice(data.lineid, 1);
+      }
+    }
+  
+    function onRecvChangeColor(data) {
+      if (notSelf(data) && state.device === "display") {
+        console.log(data.id + " just changed color!");
+        users[data.id].color = new paper.Color({
+          hue: data.hue,
+          saturation: 1,
+          brightness: 1
+        });
+      }      
+    }
+  
     function segmentToArray(i) {
       return [i.point.x, i.point.y];
     }
@@ -123,7 +149,20 @@ $(function() {
       return {
         "paths": state.paths.map(i => { return i.segments.map(segmentToArray); })
       };
-    }  
+    }
+  
+    function clearPaths() {
+      for (var i = 0; i < state.paths.length; i++) {
+        if (state.paths[i].remove()) {
+          socket.send(JSON.stringify({
+            "type": "removepath",
+            "id": state.id,
+            "lineid": i
+          }));
+          state.paths.splice(i, 1);
+        }
+      }
+    }
 
     tool.onMouseDown = function onMouseDown(event) {
       state.paths.push(new paper.Path());
@@ -150,32 +189,41 @@ $(function() {
       }));
     }
     
-    window.addEventListener('deviceorientation', function(e) {
-      var roll = e.gamma; // interval [-90,90] degrees, positive is bank right
-      
-
-      // Because we don't want to have the device upside down
-      // We constrain the x value to the range [-90,90]
-      if (x > 90) {
-        x = 90
-      };
-      if (x < -90) {
-        x = -90
-      };
-
-      // To make computation easier we shift the range of 
-      // x and y to [0,180]
-      x += 90;
-      y += 90;
-
-      // 10 is half the size of the ball
-      // It center the positioning point to the center of the ball
-      ball.style.top = (maxX * x / 180 - 10) + "px";
-      ball.style.left = (maxY * y / 180 - 10) + "px";
-    });
+    var roll;
+    if (window.DeviceOrientationEvent) {
+      window.addEventListener('deviceorientation', function(e) {
+        roll = e.gamma; // interval [-90,90] degrees, positive is bank right        
+      });
+    }
+    
+    if (window.DeviceMotionEvent) {
+      // don't ask
+      window.addEventListener('devicemotion', function(e) {
+        var totAcc = Math.sqrt((e.acceleration.x * e.acceleration.x) + (e.acceleration.y * e.acceleration.y) + (e.acceleration.z * e.acceleration.z));
+        if (totAcc > 30) {
+          console.log("total acceleration exceeded threshold: " + totAcc);
+          clearPaths();
+        }
+        else if (e.rotationRate.gamma > 40 && roll > 10) {
+          console.log("total rotation rate exceeded threshold (" + e.rotationRate.gamma + ") and roll is to right ("+roll+")");
+          var newHue = Math.random() * 360;
+          state.color = new paper.Color({
+            hue: newHue,
+            saturation: 1,
+            brightness: 1
+          });
+          socket.send(JSON.stringify({
+            "type": "changecolor",
+            "id": state.id,
+            "hue": newHue
+          }));
+        }
+      });
+    }
 
     window.addEventListener('unload', function(e) {
-      // send message to remove paths from everyone else
+      console.log(e);
+      clearPaths();
     });
   
-})()
+})
