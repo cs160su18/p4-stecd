@@ -28,6 +28,11 @@
     var state = {
       "id": Date.now() + Math.random(),
       "device": (window.location.href.indexOf("small") > -1) ? "user" : "display",
+      "color": new paper.Color({
+        hue: Math.random() * 360,
+        saturation: 1,
+        brightness: 1
+      }),
       "paths": []
     };
     console.log("local device id: "+state.id+", type: " + state.device);
@@ -62,7 +67,7 @@
           onRecvNewLine(data);
           break;
         case "addpoint":
-          console.log(data);
+          //console.log(data);
           onRecvPoint(data);
           break;
         default:
@@ -82,19 +87,27 @@
         "type": "state",
         "id": state.id,
         "device": state.device,
+        "hue": state.color.hue,
         "state": serializeState()
       }));
     }
   
     function onRecvState(data) {     
       console.log(data.id + " just sent their state!")
-      if (notSelf(data) && !(data.id in users)) {
+      if (notSelf(data) && !(data.id in users) && state.device === "display") {
         console.log(data.id + " is an untracked user; adding information")
-        users[data.id] = {"paths": [], "color": ""};
+        users[data.id] = {
+          "paths": [],
+          "color": new paper.Color({
+            hue: data.hue,
+            saturation: 1,
+            brightness: 1
+          })
+        };
         for (var i = 0; i < data.state.paths.length; i++) {
           var path = new paper.Path({
             segments: data.state.paths[i],
-            strokeColor: 'black'
+            strokeColor: users[data.id].color
           });
           users[data.id].paths.push(path);
         }
@@ -102,11 +115,11 @@
     }
   
     function onRecvNewLine(data) {
-      if (notSelf(data)) {
+      if (notSelf(data) && state.device === "display") {
         console.log(data.id + " just created a new line!")
         var path = new paper.Path({
           segments: [data.point],
-          strokeColor: 'black'
+          strokeColor: users[data.id].color
         });
         users[data.id].paths.push(path);
         if (users[data.id].paths.length - 1 !== data.lineid) {
@@ -116,7 +129,7 @@
     }
   
     function onRecvPoint(data) {
-      if (notSelf(data)) {
+      if (notSelf(data) && state.device === "display") {
         users[data.id].paths[data.lineid].add(new paper.Point(data.point));
       }
     }
@@ -129,16 +142,13 @@
       return {
         "paths": state.paths.map(i => { return i.segments.map(segmentToArray); })
       };
-    }
-  
-    function drawCurrent() {
-      
-    }
+    }  
 
     tool.onMouseDown = function onMouseDown(event) {
       state.paths.push(new paper.Path());
       var lineid = state.paths.length - 1;
-      state.paths[lineid].strokeColor = 'black';
+      
+      state.paths[lineid].strokeColor = state.color;
       state.paths[lineid].add(event.point);
       socket.send(JSON.stringify({
         "type": "newline",
